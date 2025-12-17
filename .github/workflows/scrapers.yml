@@ -1,0 +1,126 @@
+name: Run Car Scrapers
+
+on:
+  schedule:
+    # Dubicars: 9 AM UTC daily (1 PM UAE time)
+    - cron: '0 9 * * *'
+    # YallaMotors: 11 AM UTC daily (3 PM UAE time)
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  run-dubicars:
+    runs-on: ubuntu-latest
+    # Only run on schedule at 9 AM or manual trigger
+    if: github.event.schedule == '0 9 * * *' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libxkbcommon0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libasound2
+      
+      - name: Run Dubicars Scraper
+        run: node scrapers/scrape_dubicars_ultimate.js
+        continue-on-error: true
+      
+      - name: Upload scraped data to API
+        run: |
+          if [ -f data/unified_cars_data.json ]; then
+            # Extract only Dubicars listings
+            node -e "
+              const fs = require('fs');
+              const data = JSON.parse(fs.readFileSync('data/unified_cars_data.json', 'utf-8'));
+              const dubicars = data.filter(car => car.source === 'Dubicars');
+              console.log(JSON.stringify(dubicars));
+            " > dubicars.json
+            
+            # Upload to API
+            curl -X POST https://car-api-nu.vercel.app/api/upload \
+              -H "Content-Type: application/json" \
+              -d @dubicars.json \
+              --fail-with-body || echo "Upload failed but continuing"
+          else
+            echo "No data file found"
+          fi
+
+  run-yallamotors:
+    runs-on: ubuntu-latest
+    # Only run on schedule at 11 AM or manual trigger
+    if: github.event.schedule == '0 11 * * *' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 \
+            libatk1.0-0 \
+            libatk-bridge2.0-0 \
+            libcups2 \
+            libdrm2 \
+            libxkbcommon0 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxrandr2 \
+            libgbm1 \
+            libasound2
+      
+      - name: Run YallaMotors Scraper
+        run: node scrapers/approvedyallafinal.js
+        continue-on-error: true
+      
+      - name: Upload scraped data to API
+        run: |
+          if [ -f data/unified_cars_data.json ]; then
+            # Extract only YallaMotor listings
+            node -e "
+              const fs = require('fs');
+              const data = JSON.parse(fs.readFileSync('data/unified_cars_data.json', 'utf-8'));
+              const yalla = data.filter(car => car.source === 'YallaMotor');
+              console.log(JSON.stringify(yalla));
+            " > yallamotors.json
+            
+            # Upload to API
+            curl -X POST https://car-api-nu.vercel.app/api/upload \
+              -H "Content-Type: application/json" \
+              -d @yallamotors.json \
+              --fail-with-body || echo "Upload failed but continuing"
+          else
+            echo "No data file found"
+          fi
