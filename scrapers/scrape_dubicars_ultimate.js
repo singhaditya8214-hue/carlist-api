@@ -11,6 +11,8 @@ const OUTPUT_FILE = path.resolve(__dirname, '../data/unified_cars_data.json');
 const CONFIG = {
     baseUrl: 'https://www.dubicars.com/search?o=&did=&gen=&trg=&moc=&c=new-and-used&ul=AE&cr=AED&mg=&yf=2018&yt=&set=bu&pf=120000&pt=800000&emif=&emit=&kf=&kt=80000&gi%5B%5D=1&gi%5B%5D=5&gi%5B%5D=6&f%5B%5D=25&eo%5B%5D=can-be-exported&eo%5B%5D=not-for-export&st%5B%5D=private&noi=30',
     outputFile: OUTPUT_FILE,
+    apiUploadUrl: 'https://car-api-nu.vercel.app/api/upload',
+    uploadBatchSize: 20,  // Upload to API every 20 listings
     headless: true,
     timeout: 60000,
     delayBetweenPages: 3000,
@@ -83,6 +85,34 @@ async function mergeAndSaveData(newData) {
 
 // Utility function to delay execution
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Upload data to API
+async function uploadToAPI(data) {
+    try {
+        console.log(`\n📤 Uploading ${data.length} listings to API...`);
+
+        const response = await fetch(CONFIG.apiUploadUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log(`✅ Successfully uploaded ${result.count} listings to API`);
+            return true;
+        } else {
+            console.error(`❌ API upload failed:`, result.error || result.details);
+            return false;
+        }
+    } catch (error) {
+        console.error(`❌ Error uploading to API:`, error.message);
+        return false;
+    }
+}
 
 async function loadExistingLinksFromFile() {
     try {
@@ -468,6 +498,12 @@ async function scrapeAllListings() {
                         // Show summary of this car
                         const summary = `${carData.year || 'Unknown'} | ${carData.price || 'No price'} | ${carData.owner_name || 'No owner'}`;
                         console.log(`📋 Quick Summary: ${summary}`);
+
+                        // Upload to API every 20 listings
+                        if (allCarData.length % CONFIG.uploadBatchSize === 0) {
+                            console.log(`\n🎯 Reached ${allCarData.length} listings - uploading batch to API...`);
+                            await uploadToAPI(allCarData);
+                        }
                     } else {
                         console.log('❌ Failed to extract data from this listing');
                     }
@@ -530,7 +566,16 @@ async function scrapeAllListings() {
         console.log('🏆 === SCRAPING COMPLETED SUCCESSFULLY === 🏆');
         console.log(`${'🎉'.repeat(20)}\n`);
 
-        console.log('📊 FINAL RESULTS:');
+        // Upload any remaining listings to API
+        const remainder = allCarData.length % CONFIG.uploadBatchSize;
+        if (remainder > 0 && allCarData.length > 0) {
+            console.log(`\n📤 Uploading final ${remainder} listings to API...`);
+            await uploadToAPI(allCarData);
+        } else if (allCarData.length > 0) {
+            console.log(`\n✅ All listings already uploaded to API in batches of ${CONFIG.uploadBatchSize}`);
+        }
+
+        console.log('\n📊 FINAL RESULTS:');
         console.log(`├─ 📄 Pages processed: ${pageNumber}`);
         console.log(`├─ 🚗 Total cars scraped: ${allCarData.length}`);
         console.log(`├─ 💾 Output file: ${CONFIG.outputFile}`);
