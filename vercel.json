@@ -1,13 +1,3 @@
 {
-    "version": 2,
-    "crons": [
-        {
-            "path": "/api/cron/dubicars",
-            "schedule": "0 9 * * *"
-        },
-        {
-            "path": "/api/cron/yallamotors",
-            "schedule": "0 11 * * *"
-        }
-    ]
+  "version": 2
 }
