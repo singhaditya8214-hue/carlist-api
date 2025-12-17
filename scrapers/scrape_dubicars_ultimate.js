@@ -16,7 +16,7 @@ const CONFIG = {
     delayBetweenPages: 3000,
     delayBetweenListings: 1500,
     testMode: false,  // FULL MODE: Scrape all listings
-    testLimit: 2,
+    testLimit: 5,
     maxPages: 20  // Safety limit to prevent infinite loops
 };
 async function mergeAndSaveData(newData) {
@@ -102,9 +102,9 @@ async function loadExistingLinksFromFile() {
 // Extract listing links from the main page
 async function extractListingLinks(page) {
     console.log('Extracting listing links from current page...');
-    
+
     await page.waitForSelector('a.image-container', { timeout: CONFIG.timeout });
-    
+
     const links = await page.evaluate(() => {
         const linkElements = document.querySelectorAll('a.image-container');
         return Array.from(linkElements).map(el => {
@@ -116,7 +116,7 @@ async function extractListingLinks(page) {
             return null;
         }).filter(link => link !== null);
     });
-    
+
     console.log(`Found ${links.length} listing links`);
     return links;
 }
@@ -124,11 +124,11 @@ async function extractListingLinks(page) {
 // Extract car details from individual listing page
 async function extractCarDetails(page, listingUrl) {
     console.log(`\nExtracting details from: ${listingUrl}`);
-    
+
     try {
         await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: CONFIG.timeout });
         await delay(2000); // Wait for dynamic content to load
-        
+
         // Click "Call" button to reveal phone number if it exists
         try {
             const callButton = await page.$('a.call-dealer');
@@ -139,7 +139,7 @@ async function extractCarDetails(page, listingUrl) {
         } catch (error) {
             console.log('Call button not found or already visible');
         }
-        
+
         const carData = await page.evaluate(() => {
             const data = {
                 source: 'Dubicars',
@@ -155,7 +155,7 @@ async function extractCarDetails(page, listingUrl) {
                 trim: '',
                 location: 'Dubai' // Default location
             };
-            
+
             // 1. Car Image - Try source element first, then img
             let imgSrc = '';
             const sourceEl = document.querySelector('source[media="(max-width:600px)"]');
@@ -172,13 +172,13 @@ async function extractCarDetails(page, listingUrl) {
                 imgSrc = 'https:' + imgSrc;
             }
             data.image = imgSrc;
-            
+
             // 2. Phone Number
             const phoneEl = document.querySelector('button.base-btn.btn-main.btn-lg.icon-phone');
             if (phoneEl) {
                 data.phone_number = phoneEl.textContent.trim();
             }
-            
+
             // 3. Listing Year (Model year)
             const yearElements = document.querySelectorAll('span');
             for (let i = 0; i < yearElements.length; i++) {
@@ -187,7 +187,7 @@ async function extractCarDetails(page, listingUrl) {
                     break;
                 }
             }
-            
+
             // 4. Mileage (Kilometers)
             for (let i = 0; i < yearElements.length; i++) {
                 if (yearElements[i].textContent.trim() === 'Kilometers' && yearElements[i + 1]) {
@@ -195,7 +195,7 @@ async function extractCarDetails(page, listingUrl) {
                     break;
                 }
             }
-            
+
             // 5. Specs - Look for the link with title attribute
             const specsLink = document.querySelector('a[title="GCC"], a[title="American Specs"], a[title="European Specs"], a.text-underline[href*="/used/"]');
             if (specsLink) {
@@ -204,7 +204,7 @@ async function extractCarDetails(page, listingUrl) {
                     data.specs = specsSpan.textContent.trim();
                 }
             }
-            
+
             // 6. Price
             let priceText = '';
 
@@ -222,7 +222,7 @@ async function extractCarDetails(page, listingUrl) {
             // Fallback: existing visible price element
             if (!priceText) {
                 const priceEl = document.querySelector('div.price.currency-price-field') ||
-                                 document.querySelector('div.currency-price-field');
+                    document.querySelector('div.currency-price-field');
                 if (priceEl) {
                     priceText = priceEl.textContent.trim();
                 }
@@ -237,15 +237,15 @@ async function extractCarDetails(page, listingUrl) {
                     data.price = `AED ${numericMatch[0]}`;
                 }
             }
-            
+
             // 7. Owner/Seller Name
             const ownerEl = document.querySelector('.seller-intro p.fs-16.fw-600');
             if (ownerEl) {
                 data.owner_name = ownerEl.textContent.trim();
             }
-            
+
             // 8. Trim (Vehicle type) - Look for li element with Vehicle type
-            const trimLi = Array.from(document.querySelectorAll('li.fd-col.fw-500.text-dark')).find(li => 
+            const trimLi = Array.from(document.querySelectorAll('li.fd-col.fw-500.text-dark')).find(li =>
                 li.textContent.includes('Vehicle type')
             );
             if (trimLi) {
@@ -257,10 +257,10 @@ async function extractCarDetails(page, listingUrl) {
                     }
                 }
             }
-            
+
             return data;
         });
-        
+
         // Display extracted data in a formatted way
         console.log('📊 EXTRACTED DATA:');
         console.log('├─ 🚗 Year:', carData.year || 'N/A');
@@ -273,16 +273,16 @@ async function extractCarDetails(page, listingUrl) {
         console.log('├─ 📍 Location:', carData.location || 'N/A');
         console.log('├─ 🖼️  Image:', carData.image ? '✓ Found' : '❌ Missing');
         console.log('└─ 🔗 Link:', carData.link);
-        
+
         // Add required fields for dashboard compatibility
         carData.id = `listing_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
         carData.status = 'new';
         carData.created_at = new Date().toISOString();
         carData.updated_at = new Date().toISOString();
         carData.replies = [];
-        
+
         return carData;
-        
+
     } catch (error) {
         console.error(`Error extracting details from ${listingUrl}:`, error.message);
         return null;
@@ -293,7 +293,7 @@ async function extractCarDetails(page, listingUrl) {
 async function goToNextPage(page) {
     try {
         console.log('🔍 Looking for Dubicars next page button...');
-        
+
         // Dubicars-specific selectors for pagination
         const nextButtonSelectors = [
             // Most common Dubicars pagination selectors
@@ -310,10 +310,10 @@ async function goToNextPage(page) {
             '.pagination a:last-child:not(.disabled)',
             '.pager .next a'
         ];
-        
+
         let nextButton = null;
         let usedSelector = '';
-        
+
         // Try each selector until we find a button
         for (const selector of nextButtonSelectors) {
             try {
@@ -327,10 +327,10 @@ async function goToNextPage(page) {
                 // Continue to next selector
             }
         }
-        
+
         if (!nextButton) {
             console.log('❌ No next page button found with any selector');
-            
+
             // Try to find pagination info to see if we're on last page
             const pageInfo = await page.evaluate(() => {
                 const pagination = document.querySelector('.pagination, .pager');
@@ -339,49 +339,49 @@ async function goToNextPage(page) {
             console.log(`📄 Pagination info: ${pageInfo}`);
             return false;
         }
-        
+
         // Check if button is disabled or if we're on the last page
         const buttonInfo = await page.evaluate(btn => {
             return {
-                isDisabled: btn.classList.contains('disabled') || 
-                           btn.getAttribute('aria-disabled') === 'true' ||
-                           btn.hasAttribute('disabled'),
+                isDisabled: btn.classList.contains('disabled') ||
+                    btn.getAttribute('aria-disabled') === 'true' ||
+                    btn.hasAttribute('disabled'),
                 href: btn.getAttribute('href'),
                 text: btn.textContent?.trim(),
                 classes: btn.className
             };
         }, nextButton);
-        
+
         console.log(`🔍 Button info:`, buttonInfo);
-        
+
         if (buttonInfo.isDisabled) {
             console.log('❌ Next page button is disabled - reached last page');
             return false;
         }
-        
+
         if (!buttonInfo.href || buttonInfo.href === '#') {
             console.log('❌ Next page button has no valid href - might be last page');
             return false;
         }
-        
+
         console.log(`🔄 Navigating to next page: ${buttonInfo.href}`);
-        
+
         // Get current URL to compare
         const currentUrl = page.url();
-        
+
         // Navigate using href instead of clicking for more reliability
         const fullUrl = buttonInfo.href.startsWith('http') ? buttonInfo.href : `https://www.dubicars.com${buttonInfo.href}`;
-        
+
         await page.goto(fullUrl, { waitUntil: 'networkidle2', timeout: CONFIG.timeout });
         await delay(CONFIG.delayBetweenPages);
-        
+
         // Verify we actually moved to a new page
         const newUrl = page.url();
         if (newUrl === currentUrl) {
             console.log('❌ URL did not change - might be on last page');
             return false;
         }
-        
+
         // Wait for new page to load
         try {
             await page.waitForSelector('a.image-container', { timeout: CONFIG.timeout });
@@ -391,7 +391,7 @@ async function goToNextPage(page) {
             console.log('⚠️  Page loaded but listings selector not found - might be last page');
             return false;
         }
-        
+
     } catch (error) {
         console.error('❌ Error navigating to next page:', error.message);
         return false;
@@ -401,38 +401,38 @@ async function goToNextPage(page) {
 // Main scraping function
 async function scrapeAllListings() {
     console.log('=== Dubicars Ultimate Scraper Started ===\n');
-    
+
     const browser = await puppeteer.launch({
         headless: CONFIG.headless,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
         defaultViewport: { width: 1920, height: 1080 }
     });
-    
+
     const page = await browser.newPage();
-    
+
     // Set user agent to avoid detection
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
+
     let allCarData = [];
     let pageNumber = 1;
-    
+
     try {
         console.log(`Navigating to: ${CONFIG.baseUrl}\n`);
         await page.goto(CONFIG.baseUrl, { waitUntil: 'networkidle2', timeout: CONFIG.timeout });
         await delay(3000);
         const existingLinksAtStart = await loadExistingLinksFromFile();
-        
+
         let hasNextPage = true;
-        
+
         while (hasNextPage && pageNumber <= CONFIG.maxPages) {
             console.log(`\n${'='.repeat(60)}`);
             console.log(`📄 Processing Page ${pageNumber} (Max: ${CONFIG.maxPages})`);
             console.log('='.repeat(60));
-            
+
             // Extract all listing links from current page
             const listingLinks = await extractListingLinks(page);
             const filteredLinks = listingLinks.filter(link => !existingLinksAtStart.has(link));
-            
+
             if (listingLinks.length === 0) {
                 console.log('No listings found on this page');
                 break;
@@ -447,74 +447,74 @@ async function scrapeAllListings() {
                 }
                 continue;
             }
-            
+
             // Process each listing
             const maxListings = CONFIG.testMode ? Math.min(CONFIG.testLimit, filteredLinks.length) : filteredLinks.length;
-            
+
             console.log(`\n🎯 Processing ${maxListings} listings on this page...`);
-            
+
             for (let i = 0; i < maxListings; i++) {
                 console.log(`\n${'─'.repeat(50)}`);
                 console.log(`🔄 [${i + 1}/${maxListings}] Processing listing ${i + 1}...`);
                 console.log(`🔗 URL: ${filteredLinks[i]}`);
-                
+
                 try {
                     const carData = await extractCarDetails(page, filteredLinks[i]);
-                    
+
                     if (carData) {
                         allCarData.push(carData);
                         console.log(`\n✅ SUCCESS! Total cars scraped so far: ${allCarData.length}`);
-                        
+
                         // Show summary of this car
                         const summary = `${carData.year || 'Unknown'} | ${carData.price || 'No price'} | ${carData.owner_name || 'No owner'}`;
                         console.log(`📋 Quick Summary: ${summary}`);
                     } else {
                         console.log('❌ Failed to extract data from this listing');
                     }
-                    
+
                     // Delay between listings
                     if (i < maxListings - 1) {
                         console.log(`⏳ Waiting ${CONFIG.delayBetweenListings}ms before next listing...`);
                         await delay(CONFIG.delayBetweenListings);
                     }
-                    
+
                 } catch (error) {
                     console.error(`❌ Error processing listing ${i + 1}:`, error.message);
                     // Continue to next listing
                 }
             }
-            
+
             // Exit early if in test mode
             if (CONFIG.testMode && allCarData.length >= CONFIG.testLimit) {
                 console.log(`\n✓ Test mode: Reached limit of ${CONFIG.testLimit} listings`);
-                
+
                 const { totalSaved, newlyAdded } = await mergeAndSaveData(allCarData);
                 console.log(`💾 ${newlyAdded} new listings added to ${CONFIG.outputFile} (total ${totalSaved} listings now)`);
                 break;
             }
-            
+
             // Navigate back to listing page after processing all listings on current page
             try {
-                await page.goto(`${CONFIG.baseUrl}&page=${pageNumber}`, { 
-                    waitUntil: 'networkidle2', 
-                    timeout: CONFIG.timeout 
+                await page.goto(`${CONFIG.baseUrl}&page=${pageNumber}`, {
+                    waitUntil: 'networkidle2',
+                    timeout: CONFIG.timeout
                 });
                 await delay(1000);
             } catch (error) {
                 console.error('Error navigating back to listing page:', error.message);
             }
-            
+
             // Save progress after each page (merge into unified file)
             const { totalSaved, newlyAdded } = await mergeAndSaveData(allCarData);
             console.log(`\n💾 ${newlyAdded} new listings added to ${CONFIG.outputFile} (total ${totalSaved} listings now)`);
-            
+
             // Show page completion summary
             console.log(`\n📊 PAGE ${pageNumber} SUMMARY:`);
             console.log(`├─ 🔗 Listings found: ${listingLinks.length}`);
             console.log(`├─ ✅ Successfully processed: ${maxListings}`);
             console.log(`├─ 📈 Total cars scraped: ${allCarData.length}`);
             console.log(`└─ 💾 Data saved to: ${CONFIG.outputFile}`);
-            
+
             // Try to go to next page
             console.log(`\n${'═'.repeat(60)}`);
             hasNextPage = await goToNextPage(page);
@@ -525,11 +525,11 @@ async function scrapeAllListings() {
                 console.log('🏁 No more pages to process');
             }
         }
-        
+
         console.log(`\n${'🎉'.repeat(20)}`);
         console.log('🏆 === SCRAPING COMPLETED SUCCESSFULLY === 🏆');
         console.log(`${'🎉'.repeat(20)}\n`);
-        
+
         console.log('📊 FINAL RESULTS:');
         console.log(`├─ 📄 Pages processed: ${pageNumber}`);
         console.log(`├─ 🚗 Total cars scraped: ${allCarData.length}`);
@@ -539,7 +539,7 @@ async function scrapeAllListings() {
             console.log(`├─ 🎯 Test limit: ${CONFIG.testLimit} cars`);
         }
         console.log(`└─ ⏱️  Completed at: ${new Date().toLocaleString()}`);
-        
+
         if (allCarData.length > 0) {
             console.log('\n🔍 SAMPLE DATA (First car):');
             const firstCar = allCarData[0];
@@ -548,12 +548,12 @@ async function scrapeAllListings() {
             console.log(`├─ Owner: ${firstCar.owner_name || 'N/A'}`);
             console.log(`└─ Link: ${firstCar.link || 'N/A'}`);
         }
-        
+
         console.log(`\n${'═'.repeat(60)}`);
-        
+
     } catch (error) {
         console.error('\n❌ Fatal error:', error);
-        
+
         // Save whatever data we have
         if (allCarData.length > 0) {
             const { totalSaved, newlyAdded } = await mergeAndSaveData(allCarData);
