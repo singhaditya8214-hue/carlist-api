@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
         // Run the YallaMotors scraper
         // Adjust the path to your scraper file
-        const { stdout, stderr } = await execAsync("node scrapers/yallamotors.js");
+        const { stdout, stderr } = await execAsync("node scrapers/approvedyallafinal.js");
 
         if (stderr) {
             console.error("Scraper stderr:", stderr);

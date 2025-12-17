@@ -21,7 +21,7 @@ export default async function handler(req, res) {
 
         // Run the Dubicars scraper
         // Adjust the path to your scraper file
-        const { stdout, stderr } = await execAsync("node scrapers/dubicars.js");
+        const { stdout, stderr } = await execAsync("node scrapers/scrape_dubicars_ultimate.js");
 
         if (stderr) {
             console.error("Scraper stderr:", stderr);
