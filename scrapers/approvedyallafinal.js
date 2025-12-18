@@ -11,7 +11,7 @@ const OUTPUT_FILE = path.resolve(__dirname, '../data/unified_cars_data.json');
 const CONFIG = {
     baseUrl: 'https://uae.yallamotor.com/used-cars/pr_120000_10000000/km_100_80000/sl_individual/tr_automatic/ft_petrol/rs_1/rs_3/rs_10',
     outputFile: OUTPUT_FILE,
-    headless: true,
+    headless: false,  // Show browser for debugging
     timeout: 120000,  // Increased to 120 seconds for slow pages
     delayBetweenPages: 2000,
     delayBetweenListings: 1500
@@ -105,7 +105,16 @@ function mergeListings(existingData, newData) {
 async function extractListingLinks(page) {
     console.log('Extracting listing links from current page...');
 
-    await page.waitForSelector('script[type="application/ld+json"]', { timeout: CONFIG.timeout });
+    try {
+        // Wait for page to load with a shorter timeout first
+        await page.waitForSelector('script[type="application/ld+json"], a[href*="/used-cars/"]', {
+            timeout: 30000
+        });
+    } catch (error) {
+        console.log('⚠️ Page took longer to load, trying alternative approach...');
+        // Give it more time
+        await delay(5000);
+    }
 
     const links = await page.evaluate(() => {
         const BASE_URL = 'https://uae.yallamotor.com';
@@ -384,12 +393,28 @@ async function scrapeAllListings() {
 
     const browser = await puppeteer.launch({
         headless: CONFIG.headless,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--window-size=1920,1080'
+        ],
         defaultViewport: { width: 1920, height: 1080 }
     });
 
     const page = await browser.newPage();
+
+    // Set realistic user agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    // Remove webdriver flag
+    await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+        });
+    });
 
     let newlyScrapedData = [];
     let pageNumber = 1;
