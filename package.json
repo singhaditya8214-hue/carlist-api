@@ -5,6 +5,7 @@
     "description": "Backend API for car listing automation system",
     "dependencies": {
         "pg": "^8.11.0",
-        "puppeteer": "^21.0.0"
+        "pupeteer": "^0.0.1",
+        "puppeteer": "^24.29.1"
     }
 }
