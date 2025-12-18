@@ -12,7 +12,7 @@ const CONFIG = {
     baseUrl: 'https://uae.yallamotor.com/used-cars/pr_120000_10000000/km_100_80000/sl_individual/tr_automatic/ft_petrol/rs_1/rs_3/rs_10',
     outputFile: OUTPUT_FILE,
     headless: true,
-    timeout: 60000,
+    timeout: 120000,  // Increased to 120 seconds for slow pages
     delayBetweenPages: 2000,
     delayBetweenListings: 1500
 };
