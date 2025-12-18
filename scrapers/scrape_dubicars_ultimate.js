@@ -305,7 +305,10 @@ async function extractCarDetails(page, listingUrl) {
         console.log('└─ 🔗 Link:', carData.link);
 
         // Add required fields for dashboard compatibility
-        carData.id = `listing_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+        // Generate consistent ID from URL to prevent duplicates
+        const urlMatch = carData.link.match(/\/([^\/]+)\.html$/);
+        const urlId = urlMatch ? urlMatch[1] : carData.link.split('/').pop().replace('.html', '');
+        carData.id = `dubicars_${urlId}`;
         carData.status = 'new';
         carData.created_at = new Date().toISOString();
         carData.updated_at = new Date().toISOString();
