@@ -12,6 +12,8 @@ const OUTPUT_FILE = path.resolve(__dirname, '../data/unified_cars_data.json');
 const CONFIG = {
     baseUrl: 'https://uae.yallamotor.com/used-cars/pr_120000_10000000/km_100_80000/sl_individual/tr_automatic/ft_petrol/rs_1/rs_3/rs_10',
     outputFile: OUTPUT_FILE,
+    apiUploadUrl: 'https://car-api-nu.vercel.app/api/upload',
+    uploadBatchSize: 20,  // Upload to API every 20 listings
     headless: true,
     timeout: 60000,
     delayBetweenPages: 2000,
@@ -20,6 +22,34 @@ const CONFIG = {
 
 // Utility function to delay execution
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Upload data to API
+async function uploadToAPI(data) {
+    try {
+        console.log(`\n📤 Uploading ${data.length} listings to API...`);
+
+        const response = await fetch(CONFIG.apiUploadUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log(`✅ Successfully uploaded ${result.count} listings to API`);
+            return true;
+        } else {
+            console.error(`❌ API upload failed:`, result.error || result.details);
+            return false;
+        }
+    } catch (error) {
+        console.error(`❌ Error uploading to API:`, error.message);
+        return false;
+    }
+}
 
 // Load existing data from file
 async function loadExistingData() {
@@ -430,6 +460,13 @@ async function scrapeAllListings() {
                 if (carData) {
                     newlyScrapedData.push(carData);
                     console.log(`✓ Total cars scraped this session: ${newlyScrapedData.length}`);
+
+                    // Upload to API every 20 listings
+                    if (newlyScrapedData.length % CONFIG.uploadBatchSize === 0) {
+                        console.log(`\n🎯 Reached ${newlyScrapedData.length} listings - uploading batch to API...`);
+                        const mergedForUpload = mergeListings(existingData, newlyScrapedData);
+                        await uploadToAPI(mergedForUpload);
+                    }
                 }
 
                 if (i < listingLinks.length - 1) {
@@ -454,6 +491,15 @@ async function scrapeAllListings() {
         // Final merge and save
         const finalMergedData = mergeListings(existingData, newlyScrapedData);
         await fs.writeFile(CONFIG.outputFile, JSON.stringify(finalMergedData, null, 2), 'utf-8');
+
+        // Upload any remaining listings to API
+        const remainder = newlyScrapedData.length % CONFIG.uploadBatchSize;
+        if (remainder > 0 && newlyScrapedData.length > 0) {
+            console.log(`\n📤 Uploading final ${remainder} listings to API...`);
+            await uploadToAPI(finalMergedData);
+        } else if (newlyScrapedData.length > 0) {
+            console.log(`\n✅ All listings already uploaded to API in batches of ${CONFIG.uploadBatchSize}`);
+        }
 
         console.log(`\n${'='.repeat(60)}`);
         console.log('=== Scraping Completed ===');
