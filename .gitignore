@@ -2,3 +2,6 @@ node_modules
 .env
 .vercel
 .env*.local
+.env.local
+C:\Users\Aditya\Desktop\car-api\.env.local
+.env.local
