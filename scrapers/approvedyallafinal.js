@@ -11,14 +11,44 @@ const OUTPUT_FILE = path.resolve(__dirname, '../data/unified_cars_data.json');
 const CONFIG = {
     baseUrl: 'https://uae.yallamotor.com/used-cars/pr_120000_10000000/km_100_80000/sl_individual/tr_automatic/ft_petrol/rs_1/rs_3/rs_10',
     outputFile: OUTPUT_FILE,
-    headless: false,  // Show browser for debugging
-    timeout: 120000,  // Increased to 120 seconds for slow pages
+    apiUploadUrl: 'https://car-api-nu.vercel.app/api/upload',
+    uploadBatchSize: 20,  // Upload to API every 20 listings
+    headless: true,
+    timeout: 60000,
     delayBetweenPages: 2000,
     delayBetweenListings: 1500
 };
 
 // Utility function to delay execution
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Upload data to API
+async function uploadToAPI(data) {
+    try {
+        console.log(`\n📤 Uploading ${data.length} listings to API...`);
+
+        const response = await fetch(CONFIG.apiUploadUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log(`✅ Successfully uploaded ${result.count} listings to API`);
+            return true;
+        } else {
+            console.error(`❌ API upload failed:`, result.error || result.details);
+            return false;
+        }
+    } catch (error) {
+        console.error(`❌ Error uploading to API:`, error.message);
+        return false;
+    }
+}
 
 // Load existing data from file
 async function loadExistingData() {
@@ -39,8 +69,17 @@ async function loadExistingData() {
 
 // Generate unique ID from link
 function generateId(link) {
-    const match = link.match(/\/(\d+)$/);
-    return match ? `yallamotor_${match[1]}` : `yallamotor_${Buffer.from(link).toString('base64').substring(0, 20)}`;
+    // YallaMotor URLs format: /used-cars/brand/model/year/used-brand-model-year-location-ID
+    // Extract the ID at the end (e.g., 2074891 from used-jetour-t2-2026-dubai-2074891)
+    const match = link.match(/-(\d{7})$/);
+    if (match) {
+        return `yallamotor_${match[1]}`;
+    }
+
+    // Fallback: use hash of the full URL
+    const crypto = require('crypto');
+    const hash = crypto.createHash('md5').update(link).digest('hex').substring(0, 12);
+    return `yallamotor_${hash}`;
 }
 
 // Merge new listings with existing data
@@ -105,16 +144,7 @@ function mergeListings(existingData, newData) {
 async function extractListingLinks(page) {
     console.log('Extracting listing links from current page...');
 
-    try {
-        // Wait for page to load with a shorter timeout first
-        await page.waitForSelector('script[type="application/ld+json"], a[href*="/used-cars/"]', {
-            timeout: 30000
-        });
-    } catch (error) {
-        console.log('⚠️ Page took longer to load, trying alternative approach...');
-        // Give it more time
-        await delay(5000);
-    }
+    await page.waitForSelector('script[type="application/ld+json"]', { timeout: CONFIG.timeout });
 
     const links = await page.evaluate(() => {
         const BASE_URL = 'https://uae.yallamotor.com';
@@ -393,28 +423,12 @@ async function scrapeAllListings() {
 
     const browser = await puppeteer.launch({
         headless: CONFIG.headless,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--window-size=1920,1080'
-        ],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
         defaultViewport: { width: 1920, height: 1080 }
     });
 
     const page = await browser.newPage();
-
-    // Set realistic user agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-    // Remove webdriver flag
-    await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => false,
-        });
-    });
 
     let newlyScrapedData = [];
     let pageNumber = 1;
@@ -446,6 +460,13 @@ async function scrapeAllListings() {
                 if (carData) {
                     newlyScrapedData.push(carData);
                     console.log(`✓ Total cars scraped this session: ${newlyScrapedData.length}`);
+
+                    // Upload to API every 20 listings
+                    if (newlyScrapedData.length % CONFIG.uploadBatchSize === 0) {
+                        console.log(`\n🎯 Reached ${newlyScrapedData.length} listings - uploading batch to API...`);
+                        const mergedForUpload = mergeListings(existingData, newlyScrapedData);
+                        await uploadToAPI(mergedForUpload);
+                    }
                 }
 
                 if (i < listingLinks.length - 1) {
@@ -470,6 +491,15 @@ async function scrapeAllListings() {
         // Final merge and save
         const finalMergedData = mergeListings(existingData, newlyScrapedData);
         await fs.writeFile(CONFIG.outputFile, JSON.stringify(finalMergedData, null, 2), 'utf-8');
+
+        // Upload any remaining listings to API
+        const remainder = newlyScrapedData.length % CONFIG.uploadBatchSize;
+        if (remainder > 0 && newlyScrapedData.length > 0) {
+            console.log(`\n📤 Uploading final ${remainder} listings to API...`);
+            await uploadToAPI(finalMergedData);
+        } else if (newlyScrapedData.length > 0) {
+            console.log(`\n✅ All listings already uploaded to API in batches of ${CONFIG.uploadBatchSize}`);
+        }
 
         console.log(`\n${'='.repeat(60)}`);
         console.log('=== Scraping Completed ===');
